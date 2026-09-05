@@ -1,0 +1,53 @@
+# Component Details - AnomalyX
+
+## System Architecture Overview
+
+```
+ ┌─────────────────────────────────────────────────────────────────────────┐
+ │                           FRONTEND MODULE                               │
+ │  ┌──────────────┐  ┌──────────────────┐  ┌───────────────────────────┐  │
+ │  │  Header /    │  │ Metrics Summary  │  │ Real-Time Telemetry Chart │  │
+ │  │  Model Switch│  │ KPI Cards        │  │ (Chart.js + Scatter)      │  │
+ │  └──────────────┘  └──────────────────┘  └───────────────────────────┘  │
+ │  ┌──────────────┐  ┌──────────────────┐  ┌───────────────────────────┐  │
+ │  │ Dataset     │  │ Sensitivity      │  │ Alert Table & Root Cause  │  │
+ │  │ Uploader    │  │ Slider & Tuning  │  │ Explainability Drawer     │  │
+ │  └──────────────┘  └──────────────────┘  └───────────────────────────┘  │
+ └────────────────────────────────────┬────────────────────────────────────┘
+                                      │ REST API / JSON
+ ┌────────────────────────────────────▼────────────────────────────────────┐
+ │                           BACKEND MODULE (FastAPI)                      │
+ │  ┌─────────────────┐ ┌───────────────────┐ ┌─────────────────────────┐ │
+ │  │ REST API Router │ │ Pydantic Schemas  │ │ Static File Server      │ │
+ │  │ (/api/predict)  │ │ (Validation)      │ │ (frontend/ mount)       │ │
+ │  └────────┬────────┘ └─────────┬─────────┘ └─────────────────────────┘ │
+ └───────────┼────────────────────┼────────────────────────────────────────┘
+             │ In-Memory Call     │ Preprocessing & Model Calls
+ ┌───────────▼────────────────────▼────────────────────────────────────────┐
+ │                           ML ENGINE MODULE                              │
+ │  ┌─────────────────┐ ┌───────────────────┐ ┌─────────────────────────┐ │
+ │  │ AnomalyDetector │ │ DataPreprocessor  │ │ Telemetry Generator     │ │
+ │  │ (ISO, LOF, SVM) │ │ (Scaler & Imputer)│ │ & Feature Explainer     │ │
+ │  └─────────────────┘ └───────────────────┘ └─────────────────────────┘ │
+ └─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Detailed Component Specifications
+
+### 1. Frontend Components (`frontend/`)
+- **`index.html`**: Structured semantic wrapper containing navigation bar, system stats grid, main visualization panel, file drop area, model parameters tuning panel, real-time alert feed table, and explainability modal.
+- **`styles.css`**: Complete design system defining CSS variables, dark glassmorphism styling, alert severity visual indicators, pulse animations, custom scrollbars, and mobile responsiveness.
+- **`app.js`**: Core UI state controller managing API communication, dynamic Chart.js canvas updating, dataset ingestion parsing, stream timer loop, sensitivity slider debouncing, and explainability modal popups.
+
+### 2. Backend Components (`backend/`)
+- **`main.py`**: FastAPI entry point, CORS middleware, API router inclusion, static file mounting.
+- **`schemas.py`**: Pydantic schemas validating prediction payloads, stream requests, alert objects, dataset uploads, model configs, and system health status.
+- **`routes.py`**: Handles API endpoints (`/api/predict`, `/api/stream/next`, `/api/datasets/upload`, `/api/datasets/sample`, `/api/models`, `/api/alerts`, `/api/health`).
+
+### 3. ML Engine Components (`ml_module/`)
+- **`detector.py`**: Multi-algorithm wrapper (`IsolationForest`, `LocalOutlierFactor`, `OneClassSVM`, `Z-Score`). Standardizes predictions into uniform output format.
+- **`preprocessor.py`**: Handles numerical feature extraction, missing value imputation, scaling, and rolling temporal statistics.
+- **`explainer.py`**: Evaluates individual metric Z-scores and produces feature attribution percentage breakdowns explaining why a point was flagged.
+- **`generator.py`**: Generates multi-metric telemetry frames with synthetic anomalies (Point Spikes, Contextual Drift, Collective Errors).

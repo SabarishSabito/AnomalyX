@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AnomalyX - AI Real-Time Anomaly Detection & Intelligence</title>
+  <meta name="description" content="Enterprise-grade AI-powered real-time anomaly detection and root-cause intelligence platform.">
+  
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Background Glow Orbs -->
+  <div class="bg-glow orb-1"></div>
+  <div class="bg-glow orb-2"></div>
+
+  <!-- App Wrapper -->
+  <div class="app-container">
+    
+    <!-- Top Header Navigation -->
+    <header class="header">
+      <div class="header-left">
+        <div class="brand">
+          <div class="brand-icon">
+            <i data-lucide="shield-alert"></i>
+          </div>
+          <div class="brand-text">
+            <h1>Anomaly<span>X</span></h1>
+            <span class="version-tag">AI INTELLIGENCE v1.0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="status-indicator online" id="statusIndicator">
+          <span class="pulse-dot"></span>
+          <span id="statusText">API ONLINE</span>
+        </div>
+        <div class="model-badge">
+          <i data-lucide="cpu"></i>
+          <span id="activeModelBadge">Isolation Forest</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <button id="streamToggleBtn" class="btn btn-primary">
+          <i data-lucide="pause" id="streamIcon"></i>
+          <span id="streamBtnText">Pause Stream</span>
+        </button>
+        <button id="sampleDataBtn" class="btn btn-secondary">
+          <i data-lucide="refresh-cw"></i>
+          <span>Sample Stream</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Content Grid -->
+    <main class="dashboard">
+
+      <!-- Executive KPI Metrics Summary Cards -->
+      <section class="kpi-grid">
+        <div class="card kpi-card">
+          <div class="kpi-icon cyan">
+            <i data-lucide="activity"></i>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-label">Total Analyzed</span>
+            <span class="kpi-value" id="kpiTotalAnalyzed">0</span>
+            <span class="kpi-subtext">Real-time frames</span>
+          </div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-icon red">
+            <i data-lucide="alert-triangle"></i>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-label">Flagged Anomalies</span>
+            <span class="kpi-value" id="kpiAnomaliesCount">0</span>
+            <span class="kpi-subtext" id="kpiSeverityBreakdown">Critical: 0 | High: 0</span>
+          </div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-icon violet">
+            <i data-lucide="pie-chart"></i>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-label">Anomaly Rate</span>
+            <span class="kpi-value" id="kpiAnomalyRate">0.0%</span>
+            <span class="kpi-subtext">Session baseline</span>
+          </div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-icon emerald">
+            <i data-lucide="zap"></i>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-label">API Latency</span>
+            <span class="kpi-value" id="kpiLatency">0 ms</span>
+            <span class="kpi-subtext">Scikit-Learn inference</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main Visualizer Panel: Multi-Metric Chart & Score Distribution -->
+      <section class="visualizer-row">
+        <!-- Telemetry Multi-Metric Chart -->
+        <div class="card chart-card flex-2">
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="line-chart"></i>
+              <h2>Real-Time Multi-Metric Stream</h2>
+            </div>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="color-dot cpu"></span> CPU %</span>
+              <span class="legend-item"><span class="color-dot memory"></span> Memory %</span>
+              <span class="legend-item"><span class="color-dot network"></span> Network IO</span>
+              <span class="legend-item"><span class="color-dot latency"></span> Latency ms</span>
+              <span class="legend-item"><span class="color-dot anomaly"></span> Anomaly</span>
+            </div>
+          </div>
+          <div class="chart-body">
+            <canvas id="telemetryChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Anomaly Score & Distribution -->
+        <div class="card chart-card flex-1">
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="bar-chart-3"></i>
+              <h2>Anomaly Score & Threshold</h2>
+            </div>
+          </div>
+          <div class="chart-body">
+            <canvas id="scoreChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Middle Grid: Ingestion & Model Sensitivity Controls -->
+      <section class="controls-row">
+        
+        <!-- Drag & Drop Dataset Ingestor -->
+        <div class="card control-card">
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="upload-cloud"></i>
+              <h2>Ingest Custom Dataset</h2>
+            </div>
+          </div>
+          <div class="drop-zone" id="dropZone">
+            <i data-lucide="file-up" class="drop-icon"></i>
+            <p>Drag & Drop your <strong>.CSV</strong> or <strong>.JSON</strong> telemetry file here</p>
+            <span class="drop-subtext">or click to browse files</span>
+            <input type="file" id="fileInput" accept=".csv,.json" hidden>
+          </div>
+          <div class="preset-buttons">
+            <span class="preset-label">Benchmark Datasets:</span>
+            <button class="btn btn-sm btn-outline" data-category="server">Server Telemetry</button>
+            <button class="btn btn-sm btn-outline" data-category="financial">Financial Transactions</button>
+            <button class="btn btn-sm btn-outline" data-category="iot">IoT Sensor Stream</button>
+          </div>
+        </div>
+
+        <!-- Algorithm Selector & Sensitivity Tuning -->
+        <div class="card control-card">
+          <div class="card-header">
+            <div class="card-title">
+              <i data-lucide="sliders"></i>
+              <h2>Model & Sensitivity Controls</h2>
+            </div>
+          </div>
+          <div class="tuning-form">
+            <div class="form-group">
+              <label for="algorithmSelect">ML Detection Algorithm</label>
+              <select id="algorithmSelect" class="form-select">
+                <option value="isolation_forest" selected>Isolation Forest (Tree Partitioning)</option>
+                <option value="local_outlier_factor">Local Outlier Factor (Density KNN)</option>
+                <option value="one_class_svm">One-Class SVM (RBF Boundary)</option>
+                <option value="zscore_ensemble">Z-Score / IQR Statistical Ensemble</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <div class="slider-header">
+                <label for="thresholdSlider">Sensitivity / Contamination Threshold</label>
+                <span class="slider-value" id="thresholdValue">5.0%</span>
+              </div>
+              <input type="range" id="thresholdSlider" min="0.01" max="0.25" step="0.01" value="0.05" class="form-range">
+              <div class="slider-ticks">
+                <span>1% (Strict)</span>
+                <span>10% (Balanced)</span>
+                <span>25% (Aggressive)</span>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button id="applyTuningBtn" class="btn btn-primary w-full">
+                <i data-lucide="check"></i>
+                <span>Update Active Model</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Bottom Row: Real-Time Anomaly Alert Log Feed -->
+      <section class="card alert-section">
+        <div class="card-header">
+          <div class="card-title">
+            <i data-lucide="bell"></i>
+            <h2>Flagged Anomaly Alert Stream</h2>
+            <span class="badge badge-count" id="alertCountBadge">0 Alerts</span>
+          </div>
+
+          <div class="alert-filters">
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input type="text" id="alertSearchInput" placeholder="Search metric or ID...">
+            </div>
+
+            <div class="filter-buttons">
+              <button class="filter-btn active" data-severity="all">All</button>
+              <button class="filter-btn critical" data-severity="critical">Critical</button>
+              <button class="filter-btn high" data-severity="high">High</button>
+              <button class="filter-btn medium" data-severity="medium">Medium</button>
+              <button class="filter-btn low" data-severity="low">Low Risk</button>
+            </div>
+
+            <button id="exportCsvBtn" class="btn btn-sm btn-secondary">
+              <i data-lucide="download"></i>
+              <span>Export CSV</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="alert-table">
+            <thead>
+              <tr>
+                <th>Alert ID</th>
+                <th>Timestamp</th>
+                <th>Severity</th>
+                <th>Anomaly Score</th>
+                <th>Confidence</th>
+                <th>Top Contributor</th>
+                <th>Metrics Snapshot</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="alertTableBody">
+              <tr class="empty-row">
+                <td colspan="8">No anomalies flagged yet. Monitoring live stream...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>AnomalyX Engine &bull; Enterprise Anomaly Detection System &bull; Scikit-Learn Ensemble Intelligence</p>
+    </footer>
+
+  </div>
+
+  <!-- Root-Cause Explainability Modal Drawer -->
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i data-lucide="microscope" class="text-cyan"></i>
+          <h2 id="modalAlertId">Anomaly Intelligence Breakdown</h2>
+        </div>
+        <button class="modal-close" id="modalCloseBtn">&times;</button>
+      </div>
+
+      <div class="modal-body" id="modalBodyContent">
+        <!-- Dynamic content injected by app.js -->
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
