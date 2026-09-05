@@ -205,32 +205,74 @@ async def upload_dataset(file: UploadFile = File(...), model_id: str = "isolatio
     """Ingests uploaded CSV/JSON dataset file, runs anomaly detection, and returns summary."""
     try:
         content = await file.read()
-        filename = file.filename.lower()
-        if filename.endswith(".csv"):
+        filename = file.filename.lower().strip()
+        df = None
+
+        if ".csv" in filename or filename.endswith(".csv"):
             import io
-            df = pd.read_csv(io.BytesIO(content))
-        elif filename.endswith(".json"):
+            try:
+                text_content = content.decode("utf-8", errors="ignore")
+                df = pd.read_csv(io.StringIO(text_content))
+            except Exception:
+                df = pd.read_csv(io.BytesIO(content))
+        elif ".json" in filename or filename.endswith(".json"):
             import io
-            df = pd.read_json(io.BytesIO(content))
+            import json
+            try:
+                parsed_json = json.loads(content.decode("utf-8", errors="ignore"))
+                if isinstance(parsed_json, dict):
+                    # Check common container keys
+                    for key in ["records", "data", "items", "predictions", "telemetry"]:
+                        if key in parsed_json and isinstance(parsed_json[key], list):
+                            parsed_json = parsed_json[key]
+                            break
+                if isinstance(parsed_json, list):
+                    df = pd.DataFrame(parsed_json)
+                else:
+                    df = pd.read_json(io.BytesIO(content))
+            except Exception:
+                df = pd.read_json(io.BytesIO(content))
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format. Please upload a .csv or .json file.")
 
-        if df.empty:
-            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        if df is None or df.empty:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty or could not be parsed.")
 
         active_detector.set_parameters(model_id=model_id, contamination=contamination)
         results = active_detector.detect_batch(df)
         anomalies = [r for r in results if r["is_anomaly"]]
 
+        # Sync session stats and global alerts feed
+        session_stats["total_analyzed"] += len(results)
+        session_stats["anomalies_count"] += len(anomalies)
+
+        for item in anomalies:
+            alert_obj = {
+                "id": f"ALT-{uuid.uuid4().hex[:6].upper()}",
+                "timestamp": item.get("timestamp", datetime.datetime.now().strftime("%H:%M:%S")),
+                "severity": item["severity"],
+                "anomaly_score": item["anomaly_score"],
+                "confidence_pct": item["confidence_pct"],
+                "top_contributor": item["explainability"]["top_contributor"],
+                "metrics": item["metrics"],
+                "explainability": item["explainability"]
+            }
+            alerts_history.insert(0, alert_obj)
+            if len(alerts_history) > 200:
+                alerts_history.pop()
+
         return {
             "filename": file.filename,
             "total_records": len(results),
             "anomalies_found": len(anomalies),
-            "anomaly_rate_pct": round((len(anomalies) / len(results)) * 100.0, 2),
+            "anomaly_rate_pct": round((len(anomalies) / max(1, len(results))) * 100.0, 2),
             "results": results
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process dataset file: {str(e)}")
+
 
 @router.get("/alerts")
 def get_alerts(severity: Optional[str] = None):

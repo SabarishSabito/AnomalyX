@@ -85,6 +85,78 @@ class AnomalyDetector:
         norm_scores = np.clip(raw_scores, 0.0, 1.0)
         return preds, norm_scores
 
+    def _check_record_quality(self, record: Dict[str, Any], df: pd.DataFrame, index: int) -> List[str]:
+        """Evaluates data quality rules for unreliable records."""
+        issues = []
+        
+        # 1. Corrupted / Outlier Age
+        raw_age = record.get("age")
+        if raw_age is not None and str(raw_age).strip() != "":
+            age_str = str(raw_age).strip()
+            try:
+                age_val = float(age_str)
+                if age_val > 120 or age_val < 0:
+                    issues.append(f"Outlier Age ({int(age_val)})")
+                elif age_val < 18 and age_val > 0:
+                    issues.append(f"Underage Record ({int(age_val)})")
+            except ValueError:
+                issues.append(f"Corrupted Age Value ('{age_str}')")
+        elif raw_age is None or str(raw_age).strip() == "":
+            issues.append("Missing Age Value")
+
+        # 2. Salary Defects
+        raw_sal = record.get("salary")
+        if raw_sal is not None and str(raw_sal).strip() != "":
+            try:
+                sal_val = float(raw_sal)
+                if sal_val < 0:
+                    issues.append(f"Negative Salary (${int(sal_val):,})")
+                elif sal_val > 1000000:
+                    issues.append(f"Extreme Salary Outlier (${int(sal_val):,})")
+            except ValueError:
+                issues.append(f"Corrupted Salary ('{raw_sal}')")
+
+        # 3. Email Formatting
+        raw_email = record.get("email")
+        if raw_email is not None:
+            email_str = str(raw_email).strip()
+            if email_str and ("@" not in email_str or email_str.endswith("@") or email_str.startswith("@") or "." not in email_str.split("@")[-1]):
+                issues.append(f"Invalid Email ('{email_str}')")
+            elif not email_str:
+                issues.append("Missing Email")
+
+        # 4. Phone Number Validation
+        raw_phone = record.get("phone")
+        if raw_phone is not None:
+            phone_str = str(raw_phone).strip()
+            if phone_str:
+                digits_only = "".join([c for c in phone_str if c.isdigit()])
+                if " " in phone_str or len(digits_only) < 10:
+                    issues.append(f"Malformed Phone ('{phone_str}')")
+            else:
+                issues.append("Missing Phone")
+
+        # 5. Future Join Date / Format
+        raw_date = record.get("join_date")
+        if raw_date is not None and str(raw_date).strip() != "":
+            date_str = str(raw_date).strip()
+            if "2099" in date_str or "2100" in date_str:
+                issues.append(f"Impossible Future Date ('{date_str}')")
+
+        # 6. Duplicate ID Check
+        record_id = record.get("record_id") or record.get("id")
+        if record_id is not None:
+            id_col = "record_id" if "record_id" in df.columns else ("id" if "id" in df.columns else None)
+            if id_col and (df[id_col] == record_id).sum() > 1:
+                issues.append(f"Duplicate Record ID ({record_id})")
+
+        # 7. Blank Name
+        raw_name = record.get("name")
+        if raw_name is not None and str(raw_name).strip() == "":
+            issues.append("Missing Name")
+
+        return issues
+
     def detect_batch(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """
         Runs anomaly detection on a batch DataFrame.
@@ -96,12 +168,16 @@ class AnomalyDetector:
         if self.model_id == "zscore_ensemble":
             preds, scores = self._score_zscore(scaled_data)
         else:
-            # Fit if not trained yet
+            # Fit if not trained yet or if features changed
+            if getattr(self.preprocessor, "features_changed", False):
+                self.model.fit(scaled_data)
+
             try:
                 preds = self.model.predict(scaled_data)
             except Exception:
                 self.model.fit(scaled_data)
                 preds = self.model.predict(scaled_data)
+
 
             # Extract decision function score if available
             if hasattr(self.model, "score_samples"):
@@ -120,24 +196,47 @@ class AnomalyDetector:
 
         results = []
         for i in range(num_records):
-            is_anomaly = bool(preds[i] == -1)
+            raw_record = df.iloc[i].to_dict()
+            quality_issues = self._check_record_quality(raw_record, df, i)
+
+            is_anomaly = bool(preds[i] == -1) or len(quality_issues) > 0
             score = float(scores[i])
+
+            if len(quality_issues) > 0:
+                score = max(0.82, score)
+                if any("Outlier" in q or "Extreme" in q or "Negative" in q or "Impossible" in q for q in quality_issues):
+                    score = max(0.92, score)
+
             if is_anomaly and score < 0.5:
                 score = round(0.65 + score * 0.35, 3)
 
             # Calculate severity
             if is_anomaly:
-                if score >= 0.85:
+                if score >= 0.85 or any("Outlier" in q or "Negative" in q or "Corrupted" in q for q in quality_issues):
                     severity = "critical"
-                elif score >= 0.70:
+                elif score >= 0.70 or len(quality_issues) > 0:
                     severity = "high"
                 else:
                     severity = "medium"
             else:
                 severity = "low"
 
-            raw_record = df.iloc[i].to_dict()
-            explanation = self.explainer.explain(scaled_data[i], feature_names, raw_record)
+            explanation = self.explainer.explain(scaled_data[i], feature_names, raw_record, quality_issues)
+
+            # Build displayable metrics dict
+            display_metrics = {}
+            for k, v in raw_record.items():
+                if v is None or pd.isna(v):
+                    display_metrics[k] = "N/A"
+                elif isinstance(v, (int, float, np.number)):
+                    val_flt = float(v)
+                    if np.isnan(val_flt) or np.isinf(val_flt):
+                        display_metrics[k] = "N/A"
+                    else:
+                        display_metrics[k] = round(val_flt, 2)
+                else:
+                    display_metrics[k] = str(v)
+
 
             res_item = {
                 "record_index": i,
@@ -145,11 +244,13 @@ class AnomalyDetector:
                 "anomaly_score": round(score, 3),
                 "confidence_pct": round((score if is_anomaly else 1.0 - score) * 100.0, 1),
                 "severity": severity,
-                "metrics": {feat: round(float(raw_record.get(feat, 0.0)), 2) for feat in feature_names},
+                "metrics": display_metrics,
                 "explainability": explanation
             }
-            if "timestamp" in raw_record:
+            if "timestamp" in raw_record and raw_record["timestamp"] and not pd.isna(raw_record["timestamp"]):
                 res_item["timestamp"] = str(raw_record["timestamp"])
+            elif "join_date" in raw_record and raw_record["join_date"] and not pd.isna(raw_record["join_date"]):
+                res_item["timestamp"] = str(raw_record["join_date"])
             results.append(res_item)
 
         return results
@@ -159,3 +260,4 @@ class AnomalyDetector:
         df = pd.DataFrame([record_dict])
         results = self.detect_batch(df)
         return results[0]
+

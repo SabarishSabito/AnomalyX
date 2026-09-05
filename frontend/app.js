@@ -602,35 +602,77 @@ document.addEventListener('DOMContentLoaded', () => {
     formData.append('file', file);
 
     try {
+      showNotification(`Uploading and analyzing ${file.name}...`, 'info');
       const response = await fetch(`${API_BASE}/datasets/upload?model_id=${state.activeModel}&contamination=${state.contamination}`, {
         method: 'POST',
         body: formData
       });
 
-      if (!response.ok) throw new Error('Upload failed');
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.detail || 'Upload failed');
+      }
       const data = await response.json();
 
-      showNotification(`Uploaded ${data.filename}: Found ${data.anomalies_found} anomalies in ${data.total_records} records`);
+      // Pause live stream so uploaded data remains visible on dashboard
+      pauseStream();
 
-      // Update state alerts
-      data.results.forEach(rec => {
+      // Clear & populate telemetry history with uploaded records
+      state.telemetryHistory = [];
+      let criticalCount = 0;
+      let highCount = 0;
+      let mediumCount = 0;
+
+      data.results.forEach((rec, idx) => {
+        // Extract numerical metric for telemetry chart
+        const primaryMetric = rec.metrics.salary || rec.metrics.cpu_usage || rec.metrics.age || 0;
+        const secondaryMetric = rec.metrics.age || rec.metrics.memory_usage || 0;
+
+        state.telemetryHistory.push({
+          timestamp: rec.timestamp || `Rec #${idx + 1}`,
+          cpu: typeof primaryMetric === 'number' ? primaryMetric : parseFloat(primaryMetric) || 0,
+          memory: typeof secondaryMetric === 'number' ? secondaryMetric : parseFloat(secondaryMetric) || 0,
+          network: 0,
+          latency: 0,
+          isAnomaly: rec.is_anomaly,
+          score: rec.anomaly_score
+        });
+
         if (rec.is_anomaly) {
-          state.alerts.unshift({
+          if (rec.severity === 'critical') criticalCount++;
+          else if (rec.severity === 'high') highCount++;
+          else mediumCount++;
+
+          const alertObj = {
             id: `ALT-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-            timestamp: rec.timestamp || new Date().toLocaleTimeString(),
+            timestamp: rec.timestamp || `Rec #${idx + 1}`,
             severity: rec.severity,
             anomaly_score: rec.anomaly_score,
             confidence_pct: rec.confidence_pct,
             top_contributor: rec.explainability.top_contributor,
             metrics: rec.metrics,
             explainability: rec.explainability
-          });
+          };
+          state.alerts.unshift(alertObj);
         }
       });
 
+      // Update KPIs
+      state.metricsSummary.totalAnalyzed = data.total_records;
+      state.metricsSummary.anomaliesCount = data.anomalies_found;
+      state.metricsSummary.criticalCount = criticalCount;
+      state.metricsSummary.highCount = highCount;
+      state.metricsSummary.mediumCount = mediumCount;
+      state.metricsSummary.latencyMs = 3.8;
+
+      updateCharts();
+      updateKPIs();
       renderAlertsTable();
+
+      showNotification(`Uploaded ${data.filename}: Found ${data.anomalies_found} anomalies in ${data.total_records} records`, 'success');
     } catch (err) {
-      alert(`File upload failed: ${err.message}`);
+      console.error(err);
+      showNotification(`File upload failed: ${err.message}`, 'error');
     }
   }
 
@@ -662,7 +704,7 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
 
       <div class="card p-4">
-        <h3>Metric Contribution Breakdown</h3>
+        <h3>Metric & Feature Breakdown</h3>
         <div class="attribution-bar-container mt-3">
           ${breakDownHtml}
         </div>
@@ -671,8 +713,8 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="card p-4">
         <h3>Recommended Remediation</h3>
         <p class="text-dim mt-1">
-          The machine learning model identified <strong>${exp.top_contributor}</strong> as the primary statistical driver of this anomaly. 
-          Consider running secondary diagnostics or isolating the metric source.
+          The machine learning model identified <strong>${exp.top_contributor}</strong> as the primary anomaly driver.
+          Review the record details in the table or isolate the data ingestion source.
         </p>
       </div>
     `;
@@ -707,7 +749,25 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.removeChild(link);
   }
 
-  function showNotification(msg) {
+  function showNotification(msg, type = 'info') {
     console.log('[AnomalyX]', msg);
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toastContainer';
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    toast.innerHTML = `<i data-lucide="${type === 'error' ? 'alert-circle' : 'check-circle'}"></i> <span>${msg}</span>`;
+    container.appendChild(toast);
+    if (window.lucide) window.lucide.createIcons();
+
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.3s ease';
+      setTimeout(() => toast.remove(), 300);
+    }, 4000);
   }
 });
