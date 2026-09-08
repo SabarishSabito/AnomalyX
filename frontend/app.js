@@ -623,17 +623,31 @@ document.addEventListener('DOMContentLoaded', () => {
       let highCount = 0;
       let mediumCount = 0;
 
+      // Find dynamic numeric metric keys for chart visualizer
+      const firstRecordMetrics = data.results[0]?.metrics || {};
+      const numericKeys = Object.keys(firstRecordMetrics).filter(k => {
+        const v = firstRecordMetrics[k];
+        return typeof v === 'number' || (!isNaN(parseFloat(v)) && isFinite(v));
+      });
+
+      const key1 = numericKeys.find(k => /voltage|cpu|salary|val|amount/i.test(k)) || numericKeys[0];
+      const key2 = numericKeys.find(k => /current|memory|age|freq/i.test(k)) || numericKeys[1];
+      const key3 = numericKeys.find(k => /power|network|temp|io/i.test(k)) || numericKeys[2];
+      const key4 = numericKeys.find(k => /factor|latency|demand|humidity/i.test(k)) || numericKeys[3];
+
       data.results.forEach((rec, idx) => {
-        // Extract numerical metric for telemetry chart
-        const primaryMetric = rec.metrics.salary || rec.metrics.cpu_usage || rec.metrics.age || 0;
-        const secondaryMetric = rec.metrics.age || rec.metrics.memory_usage || 0;
+        const getNum = (k) => {
+          if (!k || !(k in rec.metrics)) return 0;
+          const v = rec.metrics[k];
+          return typeof v === 'number' ? v : parseFloat(v) || 0;
+        };
 
         state.telemetryHistory.push({
           timestamp: rec.timestamp || `Rec #${idx + 1}`,
-          cpu: typeof primaryMetric === 'number' ? primaryMetric : parseFloat(primaryMetric) || 0,
-          memory: typeof secondaryMetric === 'number' ? secondaryMetric : parseFloat(secondaryMetric) || 0,
-          network: 0,
-          latency: 0,
+          cpu: getNum(key1),
+          memory: getNum(key2),
+          network: getNum(key3),
+          latency: getNum(key4),
           isAnomaly: rec.is_anomaly,
           score: rec.anomaly_score
         });
